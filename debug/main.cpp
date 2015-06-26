@@ -38,7 +38,10 @@ const char *facerecAlgorithm = "FaceRecognizer.LBPH";
 // conditions, and if you use a different Face Recognition algorithm.
 // Note that a higher threshold value means accepting more faces as known people,
 // whereas lower values mean more faces will be classified as "unknown".
-const float UNKNOWN_PERSON_THRESHOLD = 0.7f;
+
+//For LBPH, after the model is trained with a good amount of faces under different face poses, it's confidence is between
+//0.2xx and 0.3xx.Start with 0.41 and reduce it bit by bit once the model is well trained.
+const float UNKNOWN_PERSON_THRESHOLD = 0.41f;
 
 
 // Cascade Classifier file, used for Face Detection.
@@ -80,12 +83,24 @@ bool saveModel= true;
 // Set to true if an existing model has to be updated instead of training from scratch
 bool resumeTrainingFromModel=true;
 
+
+#include <string>
+
+//Directory containing the models
+std::string modelDir="models/";
+
 // Name of the file to save the model
-const char * modelFileName="faceRecModel.yml";
+//MAKE SURE THE FOLDER models EXISTS. TO-DO: use boot or <sys/stat.h> to create if dir doesn't exist
+std::string modelFileName=modelDir+"faceRecModel.yml";
+
+//File to store the model Params ( num_persons  etc..)
+std::string modelParamsFileName=modelDir+"modelParams.txt";
+
+
 
 #include <stdio.h>
 #include <vector>
-#include <string>
+
 #include <iostream>
 #include <fstream> //For reading/writing model parameters to files
 
@@ -356,7 +371,7 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
         {
             cout<<"Model loaded successfully\n";
             //load the number of persons in the model
-            ifstream modelParamReader("modelParams.txt");
+            ifstream modelParamReader(modelParamsFileName.c_str());
             if (!modelParamReader.is_open())
                 cout<<"\n\nCould not open modelParams file. Please check.\n\n";//Double line space to grab attention when disp'd on console.
 
@@ -373,7 +388,7 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
                 m_latestFaces.push_back(i);
                 cout<<"Initialized m_latestFaces for person "<<i<<"\n";
                 //Load the last-seen face of persons into the preprocessedFaces at the same index as in m_latestFaces.
-                string fnameRead="person"+toString(i)+"Face.pgm";
+                string fnameRead=modelDir+"person"+toString(i)+"Face.pgm";
                 preprocessedFaces.push_back(imread(fnameRead,0));//Read the last-seen face of each person in the model
                 //TO-DO: check if the file was loaded/exists.
                 //Add labels of the faces loaded from the model
@@ -555,7 +570,7 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
                 //
                 //Reconstruct the face using eignevectors & eigenvalues and find the similarity score
                 //if the recognition method is FaceRecognizer.Fisherfaces or FaceRecognizer.Eigenfaces
-                double similarity;
+                double histogramDistance;
                 if (strcmp(facerecAlgorithm, "FaceRecognizer.Fisherfaces") == 0 || (strcmp(facerecAlgorithm,"FaceRecognizer.Eigenfaces")==0))
                  {
                     // Generate a face approximation by back-projecting the eigenvectors & eigenvalues.
@@ -566,22 +581,27 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
                             imshow("reconstructedFace", reconstructedFace);
 
                     // Verify whether the reconstructed face looks like the preprocessed face, otherwise it is probably an unknown person.
-                    similarity = getSimilarity(preprocessedFace, reconstructedFace);
+                    histogramDistance = getSimilarity(preprocessedFace, reconstructedFace);
                  }
-                else
-                    similarity=0.08;//temporary fix when LBPH is used so that the other parts aren't affected
+                //else
+                   // similarity=0.08;//temporary fix when LBPH is used so that the other parts aren't affected
 
                 string outputStr;
-                if (similarity < UNKNOWN_PERSON_THRESHOLD) {
+                //Predict the
+                model->predict(preprocessedFace,identity,histogramDistance);
+                histogramDistance/=100;
+
+               if (histogramDistance < UNKNOWN_PERSON_THRESHOLD) {
                     // Identify who the person is in the preprocessed face image.
-                    identity = model->predict(preprocessedFace);
+
+                    //identity = model->predict(preprocessedFace);
                     outputStr = toString(identity);
                 }
                 else {
                     // Since the confidence is low, assume it is an unknown person.
                     outputStr = "Unknown";
                 }
-                cout << "Identity: " << outputStr << ". Similarity: " << similarity << endl;
+                cout << "Identity: " << outputStr << ". Similarity: " << histogramDistance << endl;
 
                 // Show the confidence rating for the recognition in the mid-top of the display.
                 int cx = (displayedFrame.cols - faceWidth) / 2;
@@ -591,7 +611,7 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
                 Point ptThreshold = Point(ptTopLeft.x, ptBottomRight.y - (1.0 - UNKNOWN_PERSON_THRESHOLD) * faceHeight);
                 rectangle(displayedFrame, ptThreshold, Point(ptBottomRight.x, ptThreshold.y), CV_RGB(200,200,200), 1, CV_AA);
                 // Crop the confidence rating between 0.0 to 1.0, to show in the bar.
-                double confidenceRatio = 1.0 - min(max(similarity, 0.0), 1.0);
+                double confidenceRatio = 1.0 - min(max(histogramDistance, 0.0), 1.0);
                 Point ptConfidence = Point(ptTopLeft.x, ptBottomRight.y - confidenceRatio * faceHeight);
                 // Show the light-blue confidence bar.
                 rectangle(displayedFrame, ptConfidence, ptBottomRight, CV_RGB(0,255,255), CV_FILLED, CV_AA);
@@ -736,7 +756,7 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
                 //Write modelParameters to file:
                 //Line 1:m_numPersons
                 //Line 2:m_selectedPerson (optional unless useful)
-                ofstream modelParams("modelParams.txt");
+                ofstream modelParams(modelParamsFileName.c_str());
                 modelParams<<m_numPersons<<"\n"<<m_selectedPerson<<"\n";
                 //Save the model parameters that are required to init the GUI like the last face of a user, m_numPersons
                 for (int i=0; i<m_numPersons; i++)
@@ -747,7 +767,7 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
                         Mat srcGray = preprocessedFaces[index];
                         if (srcGray.data)
                         {
-                            string fname="person"+toString(i)+"Face.pgm";//Last seen face of person i
+                            string fname=modelDir+"person"+toString(i)+"Face.pgm";//Last seen face of person i
                             imwrite(fname,srcGray);// write the latestFaces to disk and load them in preprocessedFaces[0],[1]...[numPersons]
                                     //when loading model from disk.
 
