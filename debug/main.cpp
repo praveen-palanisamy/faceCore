@@ -370,18 +370,15 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
             for(int i=0;i<m_numPersons;i++)
             {   cout<<"Inside the loop with i="<<i<<"\n";
                 //initialize the m_latestFaces with the index(es) of face(s) of the person(s) in the model trained so far
-                m_latestFaces[i]=i;
+                m_latestFaces.push_back(i);
                 cout<<"Initialized m_latestFaces for person "<<i<<"\n";
                 //Load the last-seen face of persons into the preprocessedFaces at the same index as in m_latestFaces.
                 string fnameRead="person"+toString(i)+"Face.pgm";
-                preprocessedFaces[i]=imread(fnameRead,0);//Read the last-seen face of each person in the model
+                preprocessedFaces.push_back(imread(fnameRead,0));//Read the last-seen face of each person in the model
                 //TO-DO: check if the file was loaded/exists.
+                //Add labels of the faces loaded from the model
+                faceLabels.push_back(i);
             }
-
-
-
-
-
             m_mode=MODE_RECOGNITION;
             cout<<"Loaded model successfully. Starting in Recognition mode\n";
         }
