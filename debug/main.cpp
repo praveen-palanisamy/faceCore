@@ -81,7 +81,7 @@ bool m_debug = false;
 bool saveModel= true;
 
 // Set to true if an existing model has to be updated instead of training from scratch
-bool resumeTrainingFromModel=true;
+bool resumeTrainingFromModel=false;
 
 
 #include <string>
@@ -801,7 +801,7 @@ int main(int argc, char *argv[])
     cout << "Hit 'Escape' in the GUI window to quit." << endl;
 
     // Allow the user to specify a camera number, since not all computers will be the same camera number.
-    int cameraNumber = 0;   // Change this if you want to use a different camera device.
+    int cameraNumber = 1;   // Change this if you want to use a different camera device.
     if (argc > 1) {
         cameraNumber = atoi(argv[1]);
     }
